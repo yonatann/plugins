@@ -5,13 +5,21 @@
 package io.flutter.plugins.webviewflutter;
 
 import android.annotation.TargetApi;
+import android.app.DownloadManager;
 import android.content.Context;
 import android.hardware.display.DisplayManager;
+import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.view.View;
+import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
+import android.webkit.URLUtil;
 import android.webkit.WebStorage;
 import android.webkit.WebViewClient;
+import android.widget.Toast;
+
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
@@ -21,6 +29,8 @@ import io.flutter.plugin.platform.PlatformView;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+
+import static android.content.Context.DOWNLOAD_SERVICE;
 
 public class FlutterWebView implements PlatformView, MethodCallHandler {
   private static final String JS_CHANNEL_NAMES_FIELD = "javascriptChannelNames";
@@ -49,6 +59,32 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
     // Allow local storage.
     webView.getSettings().setDomStorageEnabled(true);
     webView.getSettings().setJavaScriptCanOpenWindowsAutomatically(true);
+
+    webView.setDownloadListener(new DownloadListener() {
+      @Override
+      public void onDownloadStart(String url, String userAgent,
+                                  String contentDisposition, String mimeType,
+                                  long contentLength) {
+        DownloadManager.Request request = new DownloadManager.Request(
+                Uri.parse(url));
+        request.setMimeType(mimeType);
+        String cookies = CookieManager.getInstance().getCookie(url);
+        request.addRequestHeader("cookie", cookies);
+        request.addRequestHeader("User-Agent", userAgent);
+        request.setDescription("Downloading file...");
+        request.setTitle(URLUtil.guessFileName(url, contentDisposition,
+                mimeType));
+        request.allowScanningByMediaScanner();
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        request.setDestinationInExternalPublicDir(
+                Environment.DIRECTORY_DOWNLOADS, URLUtil.guessFileName(
+                        url, contentDisposition, mimeType));
+        DownloadManager dm = (DownloadManager) context.getSystemService(DOWNLOAD_SERVICE);
+        dm.enqueue(request);
+
+        Toast.makeText(context, "Downloading File",
+                Toast.LENGTH_LONG).show();
+      }});
 
     methodChannel = new MethodChannel(messenger, "plugins.flutter.io/webview_" + id);
     methodChannel.setMethodCallHandler(this);
